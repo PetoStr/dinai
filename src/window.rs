@@ -17,34 +17,33 @@ pub struct GameWindow {
     event_pump: EventPump,
 }
 
-pub fn create_window(config: WindowConfig) -> Result<GameWindow, String> {
-    let sdl_context = sdl2::init()?;
-    let video_subsystem = sdl_context.video()?;
-
-    let window = video_subsystem
-        .window(config.title, config.width, config.height)
-        .position_centered()
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let canvas = window
-        .into_canvas()
-        .present_vsync()
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let event_pump = sdl_context.event_pump()?;
-
-    Ok(GameWindow {
-        config,
-        canvas,
-        should_close: false,
-
-        event_pump,
-    })
-}
-
 impl GameWindow {
+    pub fn new(config: WindowConfig) -> Result<Self, String> {
+        let sdl_context = sdl2::init()?;
+        let video_subsystem = sdl_context.video()?;
+
+        let window = video_subsystem
+            .window(config.title, config.width, config.height)
+            .position_centered()
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        let canvas = window
+            .into_canvas()
+            .present_vsync()
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        let event_pump = sdl_context.event_pump()?;
+
+        Ok(GameWindow {
+            config,
+            canvas,
+            should_close: false,
+            event_pump,
+        })
+    }
+
     pub fn update(&mut self) {
         for event in self.event_pump.poll_iter() {
             match event {
@@ -70,4 +69,3 @@ impl GameWindow {
         self.should_close
     }
 }
-

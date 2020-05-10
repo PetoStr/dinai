@@ -1,5 +1,6 @@
 pub mod window;
 
+use crate::window::GameWindow;
 use crate::window::WindowConfig;
 use sdl2::pixels::Color;
 use sdl2::render::Canvas;
@@ -13,7 +14,7 @@ fn render(canvas: &mut Canvas<Window>) {
 }
 
 pub fn run(win_conf: WindowConfig) -> Result<(), String> {
-    let mut game_window = window::create_window(win_conf)?;
+    let mut game_window = GameWindow::new(win_conf)?;
 
     while !game_window.should_close() {
         game_window.update();
@@ -23,4 +24,3 @@ pub fn run(win_conf: WindowConfig) -> Result<(), String> {
 
     Ok(())
 }
-

@@ -9,4 +9,3 @@ fn main() -> Result<(), String> {
 
     dinai::run(conf)
 }
-
