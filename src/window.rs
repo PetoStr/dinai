@@ -1,5 +1,3 @@
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 use sdl2::EventPump;
@@ -13,7 +11,6 @@ pub struct WindowConfig {
 pub struct GameWindow {
     config: WindowConfig,
     canvas: Canvas<Window>,
-    should_close: bool,
     event_pump: EventPump,
 }
 
@@ -39,22 +36,12 @@ impl GameWindow {
         Ok(GameWindow {
             config,
             canvas,
-            should_close: false,
             event_pump,
         })
     }
 
-    pub fn update(&mut self) {
-        for event in self.event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Q),
-                    ..
-                } => self.should_close = true,
-                _ => {}
-            }
-        }
+    pub fn event_pump_mut(&mut self) -> &mut EventPump {
+        &mut self.event_pump
     }
 
     pub fn config(&self) -> &WindowConfig {
@@ -63,9 +50,5 @@ impl GameWindow {
 
     pub fn canvas_mut(&mut self) -> &mut Canvas<Window> {
         &mut self.canvas
-    }
-
-    pub fn should_close(&self) -> bool {
-        self.should_close
     }
 }
