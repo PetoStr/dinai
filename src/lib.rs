@@ -62,7 +62,7 @@ impl Game {
             let draw_res = self.draw();
 
             if let Some(err) = draw_res.err() {
-                println!("{}", err);
+                eprintln!("{}", err);
             }
         }
     }
