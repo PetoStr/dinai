@@ -2,9 +2,49 @@ use crate::math::Vector2f;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub struct Entity {
-    pub position: Vector2f,
+#[derive(Debug, Clone, Default)]
+pub struct CollFilter {
+    pub group_id: u32,
+    pub check_mask: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Transform {
+    pub pos: Vector2f,
+    pub size: Vector2f,
+}
+
+impl Transform {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn intersects(&self, other: &Transform) -> bool {
+        self.pos.x + self.size.x > other.pos.x
+            && other.pos.x + other.size.x > self.pos.x
+            && self.pos.y + self.size.y > other.pos.y
+            && other.pos.y + other.size.y > self.pos.y
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Physics {
     pub speed: Vector2f,
+    pub disable_gravity: bool,
+    pub coll_filter: CollFilter,
+}
+
+impl Physics {
+    pub fn new() -> Self {
+        Default::default()
+    }
+}
+
+#[derive(Clone)]
+pub struct Entity {
+    pub transform: Transform,
+    pub physics: Physics,
+    pub collision: fn(&mut Self, &Self),
 }
 
 pub struct World {
@@ -20,31 +60,52 @@ impl World {
         }
     }
 
-    pub fn create_entity(&mut self) -> Rc<RefCell<Entity>> {
-        let entity = Rc::new(RefCell::new(Entity {
-            position: Vector2f::new(),
-            speed: Vector2f::new(),
-        }));
-
-        let cloned_entity = Rc::clone(&entity);
-
+    pub fn add_entity(&mut self, entity: Rc<RefCell<Entity>>) {
         self.entities.push(entity);
-
-        cloned_entity
     }
 
     pub fn update(&self) {
         for entity in &self.entities {
-            self.update_entity(entity);
+            self.update_entity(&mut entity.borrow_mut());
+        }
+
+        for entity in &self.entities {
+            self.check_collisions(entity);
         }
     }
 
-    fn update_entity(&self, entity: &Rc<RefCell<Entity>>) {
-        let borrowed_entity = &mut *entity.borrow_mut();
+    pub fn entities(&self) -> &Vec<Rc<RefCell<Entity>>> {
+        &self.entities
+    }
 
-        let speed = borrowed_entity.speed.clone();
-        borrowed_entity.position += &speed;
+    fn update_entity(&self, entity: &mut Entity) {
+        let speed = entity.physics.speed.clone();
+        let transform = &mut entity.transform;
 
-        borrowed_entity.speed += &self.gravity;
+        transform.pos += &speed;
+
+        let physics = &mut entity.physics;
+        if !physics.disable_gravity {
+            physics.speed += &self.gravity;
+        }
+    }
+
+    fn check_collisions(&self, entity: &Rc<RefCell<Entity>>) {
+        let mut borrowed_entity = entity.borrow_mut();
+        for other in &self.entities {
+            if entity as *const _ == other as *const _ {
+                continue;
+            }
+
+            let other = other.borrow();
+            let check_mask = borrowed_entity.physics.coll_filter.check_mask;
+            let group_id = other.physics.coll_filter.group_id;
+
+            if (check_mask & group_id) != 0
+                && borrowed_entity.transform.intersects(&other.transform)
+            {
+                (borrowed_entity.collision)(&mut borrowed_entity, &other);
+            }
+        }
     }
 }

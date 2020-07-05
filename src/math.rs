@@ -1,6 +1,6 @@
 use std::ops;
 
-#[derive(PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Clone, Default)]
 pub struct Vector2f {
     pub x: f32,
     pub y: f32,
@@ -8,7 +8,7 @@ pub struct Vector2f {
 
 impl Vector2f {
     pub fn new() -> Self {
-        Self { x: 0f32, y: 0f32 }
+        Default::default()
     }
 
     pub fn from_coords(x: f32, y: f32) -> Self {

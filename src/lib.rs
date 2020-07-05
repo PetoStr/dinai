@@ -3,7 +3,10 @@ pub mod physics;
 pub mod window;
 
 use crate::math::Vector2f;
+use crate::physics::CollFilter;
 use crate::physics::Entity;
+use crate::physics::Physics;
+use crate::physics::Transform;
 use crate::physics::World;
 use crate::window::GameWindow;
 use crate::window::WindowConfig;
@@ -18,22 +21,57 @@ struct Game {
     game_window: GameWindow,
     running: bool,
     world: World,
-    player: Rc<RefCell<Entity>>,
 }
 
 impl Game {
     fn new(game_window: GameWindow) -> Self {
         let mut world = World::new(Vector2f::from_coords(0.0, 0.05));
 
-        let player = world.create_entity();
-        player.borrow_mut().position = Vector2f::from_coords(300.0, 500.0);
-        player.borrow_mut().speed = Vector2f::from_coords(2.5, -5.5);
+        let floor_id = 1;
+
+        let player = Rc::new(RefCell::new(Entity {
+            transform: Transform {
+                pos: Vector2f::from_coords(300.0, 400.0),
+                size: Vector2f::from_coords(20.0, 20.0),
+            },
+            physics: Physics {
+                speed: Vector2f::from_coords(2.5, -5.5),
+                disable_gravity: false,
+                coll_filter: CollFilter {
+                    group_id: 0,
+                    check_mask: floor_id,
+                },
+            },
+            collision: |this, other| {
+                this.physics.disable_gravity = true;
+                this.physics.speed = Vector2f::new();
+                this.transform.pos.y = other.transform.pos.y - other.transform.size.y;
+            },
+        }));
+
+        let floor = Rc::new(RefCell::new(Entity {
+            transform: Transform {
+                pos: Vector2f::from_coords(0.0, 500.0),
+                size: Vector2f::from_coords(game_window.config().width as f32, 20.0),
+            },
+            physics: Physics {
+                speed: Vector2f::new(),
+                disable_gravity: true,
+                coll_filter: CollFilter {
+                    group_id: floor_id,
+                    check_mask: 0,
+                },
+            },
+            collision: |_this, _other| {},
+        }));
+
+        world.add_entity(Rc::clone(&player));
+        world.add_entity(Rc::clone(&floor));
 
         Game {
             game_window,
             running: false,
             world,
-            player,
         }
     }
 
@@ -73,14 +111,19 @@ impl Game {
         canvas.set_draw_color(Color::RGB(240, 240, 240));
         canvas.clear();
 
-        let player = &*self.player.borrow();
         canvas.set_draw_color(Color::RGB(0, 0, 0));
-        canvas.fill_rect(Rect::new(
-            player.position.x as i32,
-            player.position.y as i32,
-            20,
-            20,
-        ))?;
+
+        for entity in self.world.entities() {
+            let borrowed_entity = entity.borrow();
+            let transform = &borrowed_entity.transform;
+
+            canvas.fill_rect(Rect::new(
+                transform.pos.x as i32,
+                transform.pos.y as i32,
+                transform.size.x as u32,
+                transform.size.y as u32,
+            ))?;
+        }
 
         canvas.present();
 
