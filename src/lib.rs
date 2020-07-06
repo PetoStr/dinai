@@ -1,3 +1,8 @@
+//! This is an attempt to create an AI that can learn to jump over obstacles thanks to genetic
+//! algorithm and neural network.
+
+#![warn(missing_docs)]
+
 pub mod math;
 pub mod physics;
 pub mod window;
@@ -140,6 +145,22 @@ impl Game {
     fn key_up(&mut self, _keycode: Keycode) {}
 }
 
+/// Runs the game with the given [`WindowConfig`].
+///
+/// # Examples
+/// ```ignore
+/// use dinai::window::WindowConfig;
+///
+/// let config = WindowConfig {
+///     title: "Title",
+///     width: 1280,
+///     height: 720,
+/// };
+///
+/// dinai::run(config).unwrap();
+/// ```
+///
+/// [`WindowConfig`]: window/struct.WindowConfig.html
 pub fn run(win_conf: WindowConfig) -> Result<(), String> {
     let game_window = GameWindow::new(win_conf)?;
     let mut game = Game::new(game_window);
