@@ -186,3 +186,38 @@ impl World {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_intersection() {
+        let left = Transform {
+            pos: Vector2f::from_coords(-20.0, 0.0),
+            size: Vector2f::from_coords(45.0, 25.0),
+        };
+
+        let right = Transform {
+            pos: Vector2f::from_coords(20.0, 0.0),
+            size: Vector2f::from_coords(25.0, 25.0),
+        };
+
+        assert!(left.intersects(&right));
+    }
+
+    #[test]
+    fn test_no_intersection() {
+        let left = Transform {
+            pos: Vector2f::from_coords(-20.0, 0.0),
+            size: Vector2f::from_coords(45.0, 25.0),
+        };
+
+        let right = Transform {
+            pos: Vector2f::from_coords(25.1, 0.0),
+            size: Vector2f::from_coords(25.0, 25.0),
+        };
+
+        assert!(!left.intersects(&right));
+    }
+}

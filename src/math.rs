@@ -50,3 +50,28 @@ impl ops::AddAssign<&Vector2f> for Vector2f {
         self.y += rhs.y;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_add() {
+        let a = Vector2f::from_coords(1.0, 1.0);
+        let b = Vector2f::from_coords(2.0, 3.0);
+
+        let res = a + &b;
+
+        assert!((res.x - res.y) - (3.0 - 4.0) < 0.0001);
+    }
+
+    #[test]
+    fn test_add_assign() {
+        let mut a = Vector2f::from_coords(1.0, 1.0);
+        let b = Vector2f::from_coords(2.0, 3.0);
+
+        a += &b;
+
+        assert!((a.x - a.y) - (3.0 - 4.0) < 0.0001);
+    }
+}
