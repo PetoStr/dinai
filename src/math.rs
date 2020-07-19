@@ -3,7 +3,7 @@
 use std::ops;
 
 /// A 2D vector.
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Copy, Clone, Default)]
 pub struct Vector2f {
     /// x coordinate of the vector.
     pub x: f32,
@@ -33,10 +33,10 @@ impl Vector2f {
     }
 }
 
-impl ops::Add<&Vector2f> for Vector2f {
+impl ops::Add<Vector2f> for Vector2f {
     type Output = Self;
 
-    fn add(self, rhs: &Self) -> Self {
+    fn add(self, rhs: Self) -> Self {
         Self {
             x: self.x + rhs.x,
             y: self.y + rhs.y,
@@ -44,8 +44,8 @@ impl ops::Add<&Vector2f> for Vector2f {
     }
 }
 
-impl ops::AddAssign<&Vector2f> for Vector2f {
-    fn add_assign(&mut self, rhs: &Self) {
+impl ops::AddAssign<Vector2f> for Vector2f {
+    fn add_assign(&mut self, rhs: Self) {
         self.x += rhs.x;
         self.y += rhs.y;
     }
@@ -60,7 +60,7 @@ mod tests {
         let a = Vector2f::from_coords(1.0, 1.0);
         let b = Vector2f::from_coords(2.0, 3.0);
 
-        let res = a + &b;
+        let res = a + b;
 
         assert!((res.x - res.y) - (3.0 - 4.0) < 0.0001);
     }
@@ -70,7 +70,7 @@ mod tests {
         let mut a = Vector2f::from_coords(1.0, 1.0);
         let b = Vector2f::from_coords(2.0, 3.0);
 
-        a += &b;
+        a += b;
 
         assert!((a.x - a.y) - (3.0 - 4.0) < 0.0001);
     }

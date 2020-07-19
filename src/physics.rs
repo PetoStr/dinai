@@ -91,7 +91,7 @@ pub struct Entity {
 
     /// Function pointer to function that handles entity's collision. First parameter is this
     /// entity and the second parameter is the entity with which this entity collided.
-    pub collision: fn(this: &mut Self, other: &Self),
+    pub collision: fn(&mut Self, other: &Self),
 }
 
 /// A container for handling entities.
@@ -156,14 +156,10 @@ impl World {
     }
 
     fn update_entity(&self, entity: &mut Entity) {
-        let speed = entity.physics.speed.clone();
-        let transform = &mut entity.transform;
+        entity.transform.pos += entity.physics.speed;
 
-        transform.pos += &speed;
-
-        let physics = &mut entity.physics;
-        if !physics.disable_gravity {
-            physics.speed += &self.gravity;
+        if !entity.physics.disable_gravity {
+            entity.physics.speed += self.gravity;
         }
     }
 
