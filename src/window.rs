@@ -1,11 +1,14 @@
 //! A wrapper for SDL2 library.
 
-use std::collections::HashSet;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::render::Canvas;
-use sdl2::video::Window;
+use sdl2::pixels::Color;
+use sdl2::rect::Rect;
+use sdl2::render::{Canvas, TextureCreator};
+use sdl2::ttf::{Font, Sdl2TtfContext};
+use sdl2::video::{Window, WindowContext};
 use sdl2::EventPump;
+use std::collections::HashSet;
 
 /// A config that specifies window constants.
 pub struct WindowConfig {
@@ -77,9 +80,7 @@ impl GameWindow {
 
     /// Poll the `SDL2` events and handle them.
     pub fn poll(&mut self) {
-        let events = self.event_pump
-            .poll_iter()
-            .collect::<Vec<_>>();
+        let events = self.event_pump.poll_iter().collect::<Vec<_>>();
 
         for event in events {
             match event {
@@ -87,12 +88,16 @@ impl GameWindow {
                 Event::KeyDown {
                     keycode: Some(key_code),
                     ..
-                } => { self.pressed_keys.insert(key_code); },
+                } => {
+                    self.pressed_keys.insert(key_code);
+                }
                 Event::KeyUp {
                     keycode: Some(key_code),
                     ..
-                } => { self.pressed_keys.remove(&key_code); },
-                _ => {},
+                } => {
+                    self.pressed_keys.remove(&key_code);
+                }
+                _ => {}
             };
         }
     }
@@ -123,11 +128,95 @@ impl GameWindow {
         &self.config
     }
 
+    /// Returns a reference to current [`Canvas`] of `SDL2` [`Window`].
+    ///
+    /// [`Canvas`]: ../../sdl2/render/struct.Canvas.html
+    /// [`Window`]: ../../sdl2/video/struct.Window.html
+    pub fn canvas(&self) -> &Canvas<Window> {
+        &self.canvas
+    }
+
     /// Returns a mutable reference to current [`Canvas`] of `SDL2` [`Window`].
     ///
     /// [`Canvas`]: ../../sdl2/render/struct.Canvas.html
     /// [`Window`]: ../../sdl2/video/struct.Window.html
     pub fn canvas_mut(&mut self) -> &mut Canvas<Window> {
         &mut self.canvas
+    }
+}
+
+/// A helper text renderer for specific `Font`.
+pub struct TextRenderer<'a> {
+    font: Font<'a, 'a>,
+    texture_creator: TextureCreator<WindowContext>,
+}
+
+impl<'a> TextRenderer<'a> {
+    /// Creates a new text renderer for the given [`Canvas`].
+    ///
+    /// [`Canvas`]: ../../sdl2/render/struct.Canvas.html
+    pub fn new(ttf_context: &'a Sdl2TtfContext, canvas: &Canvas<Window>) -> Result<Self, String> {
+        let mut font = ttf_context.load_font("Inconsolata-Bold.ttf", 128)?;
+        font.set_style(sdl2::ttf::FontStyle::BOLD);
+
+        let texture_creator = canvas.texture_creator();
+
+        Ok(Self {
+            font,
+            texture_creator,
+        })
+    }
+
+    /// Draws the given text on the [`Canvas`].
+    ///
+    /// # Examples
+    ///
+    /// [`Canvas`]: ../../sdl2/render/struct.Canvas.html
+    ///
+    /// ```
+    /// # use dinai::window::{GameWindow, TextRenderer, WindowConfig};
+    /// #
+    /// # let config = WindowConfig {
+    /// #     title: "Title",
+    /// #     width: 1280,
+    /// #     height: 720,
+    /// # };
+    /// #
+    /// # let mut game_window = GameWindow::new(config).unwrap();
+    /// #
+    /// let ttf_context = sdl2::ttf::init().unwrap();
+    /// let text_renderer = TextRenderer::new(&ttf_context, game_window.canvas()).unwrap();
+    ///
+    /// text_renderer.draw_text("Hello", 0, 0, 0.2, game_window.canvas_mut());
+    /// ```
+    pub fn draw_text(
+        &self,
+        text: &str,
+        x: i32,
+        y: i32,
+        scale: f32,
+        canvas: &mut Canvas<Window>,
+    ) -> Result<(), String> {
+        let surface = self
+            .font
+            .render(text)
+            .blended(Color::RGBA(0, 0, 0, 255))
+            .map_err(|e| e.to_string())?;
+
+        let texture = self
+            .texture_creator
+            .create_texture_from_surface(&surface)
+            .map_err(|e| e.to_string())?;
+
+        let width = surface.width() as f32 * scale;
+        let height = surface.height() as f32 * scale;
+
+        canvas.copy(
+            &texture,
+            None,
+            Some(Rect::new(x, y, width as u32, height as u32)),
+        )?;
+
+        Ok(())
     }
 }

@@ -1,5 +1,5 @@
 use dinai::math::{AABBf, Vector2f};
-use dinai::window::{GameWindow, WindowConfig};
+use dinai::window::{GameWindow, TextRenderer, WindowConfig};
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
@@ -21,9 +21,7 @@ struct Player {
 }
 
 impl Player {
-    fn draw(&self, canvas: &mut Canvas<sdl2::video::Window>)
-        -> Result<(), String>
-    {
+    fn draw(&self, canvas: &mut Canvas<sdl2::video::Window>) -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(0, 0, 0));
         canvas.fill_rect(Rect::new(
             self.pos.x as i32,
@@ -43,9 +41,7 @@ struct Floor {
 }
 
 impl Floor {
-    fn draw(&self, canvas: &mut Canvas<sdl2::video::Window>)
-        -> Result<(), String>
-    {
+    fn draw(&self, canvas: &mut Canvas<sdl2::video::Window>) -> Result<(), String> {
         let bb = &self.bounding_box;
 
         canvas.set_draw_color(Color::RGB(55, 55, 55));
@@ -83,7 +79,10 @@ fn main() -> Result<(), String> {
 
     let mut game_window = GameWindow::new(win_conf)?;
 
-    let gravity = 9.81;
+    let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
+    let text_renderer = TextRenderer::new(&ttf_context, game_window.canvas())?;
+
+    let gravity = 800.0;
 
     let mut start_time = Instant::now();
 
@@ -103,9 +102,9 @@ fn main() -> Result<(), String> {
                     player.velocity.y = -350.0;
                     player.state = MovementState::Jumping;
                 }
-            },
+            }
             MovementState::Jumping => {
-                player.velocity.y += gravity;
+                player.velocity.y += gravity * delta_time;
 
                 // Predict collision one frame in advance. This way the player
                 // does not flicker after landing on the floor.
@@ -122,7 +121,7 @@ fn main() -> Result<(), String> {
                     player.pos.y = floor.bounding_box.min.y - player.size.y;
                     player.state = MovementState::Running;
                 }
-            },
+            }
         }
 
         player.velocity.x = 0.0;
@@ -143,6 +142,8 @@ fn main() -> Result<(), String> {
 
         player.draw(canvas)?;
         floor.draw(canvas)?;
+
+        text_renderer.draw_text(&format!("FPS: {:.2}", 1.0 / delta_time), 0, 0, 0.2, canvas)?;
 
         canvas.present();
     }
