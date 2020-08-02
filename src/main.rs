@@ -3,8 +3,16 @@ use dinai::window::{GameWindow, TextRenderer, WindowConfig};
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
-use sdl2::render::Canvas;
 use std::time::Instant;
+
+const GRAVITY: f32 = 800.0;
+
+struct Context<'a> {
+    game_window: &'a mut GameWindow,
+    text_renderer: &'a TextRenderer<'a>,
+    floor: &'a Floor,
+    delta_time: f32,
+}
 
 enum MovementState {
     Running,
@@ -15,13 +23,21 @@ struct Player {
     pos: Vector2f,
     size: Vector2f,
     state: MovementState,
+    alive: bool,
+    score: f32,
 
     // Defined as pixels per second.
     velocity: Vector2f,
 }
 
 impl Player {
-    fn draw(&self, canvas: &mut Canvas<sdl2::video::Window>) -> Result<(), String> {
+    fn draw(&self, ctx: &mut Context) -> Result<(), String> {
+        let canvas = ctx.game_window.canvas_mut();
+        let score_text = format!("Score: {:.2}", self.score);
+
+        ctx.text_renderer
+            .draw_text(&score_text, 0, 0, 0.2, canvas)?;
+
         canvas.set_draw_color(Color::RGB(0, 0, 0));
         canvas.fill_rect(Rect::new(
             self.pos.x as i32,
@@ -32,6 +48,56 @@ impl Player {
 
         Ok(())
     }
+
+    fn update(&mut self, ctx: &Context) {
+        if !self.alive {
+            return;
+        }
+
+        match self.state {
+            MovementState::Running => {
+                if ctx.game_window.is_key_pressed(&Keycode::W) {
+                    self.jump();
+                }
+            }
+            MovementState::Jumping => {
+                self.velocity.y += GRAVITY * ctx.delta_time;
+
+                // Predict collision one frame in advance. This way the player
+                // does not flicker after landing on the floor.
+                let future_pos = self.pos + self.velocity * ctx.delta_time;
+
+                let bb = AABBf {
+                    min: future_pos,
+                    max: future_pos + self.size,
+                };
+
+                // Player intersects with floor.
+                if bb.intersects(&ctx.floor.bounding_box) {
+                    self.velocity.y = 0.0;
+                    self.pos.y = ctx.floor.bounding_box.min.y - self.size.y;
+                    self.state = MovementState::Running;
+                }
+            }
+        }
+
+        self.score += ctx.delta_time;
+
+        self.velocity.x = 0.0;
+        self.pos += self.velocity * ctx.delta_time;
+    }
+
+    fn aabbf(&self) -> AABBf {
+        AABBf {
+            min: self.pos,
+            max: self.pos + self.size,
+        }
+    }
+
+    fn jump(&mut self) {
+        self.velocity.y = -350.0;
+        self.state = MovementState::Jumping;
+    }
 }
 
 struct Floor {
@@ -41,8 +107,9 @@ struct Floor {
 }
 
 impl Floor {
-    fn draw(&self, canvas: &mut Canvas<sdl2::video::Window>) -> Result<(), String> {
+    fn draw(&self, ctx: &mut Context) -> Result<(), String> {
         let bb = &self.bounding_box;
+        let canvas = ctx.game_window.canvas_mut();
 
         canvas.set_draw_color(Color::RGB(55, 55, 55));
         canvas.fill_rect(Rect::new(
@@ -56,18 +123,50 @@ impl Floor {
     }
 }
 
+struct Obstacle {
+    pos: Vector2f,
+    size: Vector2f,
+
+    // Defined as pixels per second on the x-axis.
+    velocity_x: f32,
+}
+
+impl Obstacle {
+    fn draw(&self, ctx: &mut Context) -> Result<(), String> {
+        let canvas = ctx.game_window.canvas_mut();
+
+        canvas.set_draw_color(Color::RGB(0, 127, 0));
+        canvas.fill_rect(Rect::new(
+            self.pos.x as i32,
+            self.pos.y as i32,
+            self.size.x as u32,
+            self.size.y as u32,
+        ))?;
+
+        Ok(())
+    }
+
+    fn update(&mut self, ctx: &Context) {
+        self.pos.x += self.velocity_x * ctx.delta_time;
+
+        if self.pos.x + self.size.x < 0.0 {
+            self.pos.x = ctx.game_window.config().width as f32;
+        }
+    }
+
+    fn aabbf(&self) -> AABBf {
+        AABBf {
+            min: self.pos,
+            max: self.pos + self.size,
+        }
+    }
+}
+
 fn main() -> Result<(), String> {
     let win_conf = WindowConfig {
         title: "dinai",
         width: 1280,
         height: 720,
-    };
-
-    let mut player = Player {
-        pos: Vector2f::from_coords(100.0, 100.0),
-        size: Vector2f::from_coords(25.0, 25.0),
-        state: MovementState::Jumping,
-        velocity: Vector2f::new(),
     };
 
     let floor = Floor {
@@ -77,12 +176,26 @@ fn main() -> Result<(), String> {
         },
     };
 
+    let floor_top_y = floor.bounding_box.min.y;
+    let mut player = Player {
+        pos: Vector2f::from_coords(100.0, floor_top_y - 25.0),
+        size: Vector2f::from_coords(25.0, 25.0),
+        state: MovementState::Running,
+        alive: true,
+        score: 0.0,
+        velocity: Vector2f::new(),
+    };
+
+    let mut obstacle = Obstacle {
+        pos: Vector2f::from_coords(win_conf.width as f32, floor_top_y - 35.0),
+        size: Vector2f::from_coords(25.0, 35.0),
+        velocity_x: -400.0,
+    };
+
     let mut game_window = GameWindow::new(win_conf)?;
 
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
     let text_renderer = TextRenderer::new(&ttf_context, game_window.canvas())?;
-
-    let gravity = 800.0;
 
     let mut start_time = Instant::now();
 
@@ -96,56 +209,33 @@ fn main() -> Result<(), String> {
             break;
         }
 
-        match player.state {
-            MovementState::Running => {
-                if game_window.is_key_pressed(&Keycode::W) {
-                    player.velocity.y = -350.0;
-                    player.state = MovementState::Jumping;
-                }
-            }
-            MovementState::Jumping => {
-                player.velocity.y += gravity * delta_time;
+        let mut ctx = Context {
+            game_window: &mut game_window,
+            text_renderer: &text_renderer,
+            floor: &floor,
+            delta_time,
+        };
 
-                // Predict collision one frame in advance. This way the player
-                // does not flicker after landing on the floor.
-                let future_pos = player.pos + player.velocity * delta_time;
+        if player.alive {
+            player.update(&ctx);
+            obstacle.update(&ctx);
 
-                let bb = AABBf {
-                    min: future_pos,
-                    max: future_pos + player.size,
-                };
-
-                // Player intersects with floor.
-                if bb.intersects(&floor.bounding_box) {
-                    player.velocity.y = 0.0;
-                    player.pos.y = floor.bounding_box.min.y - player.size.y;
-                    player.state = MovementState::Running;
-                }
+            if player.aabbf().intersects(&obstacle.aabbf()) {
+                player.alive = false;
             }
         }
 
-        player.velocity.x = 0.0;
-        if game_window.is_key_pressed(&Keycode::A) {
-            player.velocity.x -= 200.0;
-        }
-        if game_window.is_key_pressed(&Keycode::D) {
-            player.velocity.x += 200.0;
-        }
-
-        player.pos += player.velocity * delta_time;
-
-        let canvas = game_window.canvas_mut();
+        let canvas = ctx.game_window.canvas_mut();
 
         // Set clear color.
         canvas.set_draw_color(Color::RGB(240, 240, 240));
         canvas.clear();
 
-        player.draw(canvas)?;
-        floor.draw(canvas)?;
+        obstacle.draw(&mut ctx)?;
+        player.draw(&mut ctx)?;
+        floor.draw(&mut ctx)?;
 
-        text_renderer.draw_text(&format!("FPS: {:.2}", 1.0 / delta_time), 0, 0, 0.2, canvas)?;
-
-        canvas.present();
+        ctx.game_window.canvas_mut().present();
     }
 
     Ok(())
