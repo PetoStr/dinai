@@ -102,6 +102,17 @@ impl GameWindow {
         }
     }
 
+    /// Clears the screen with the given color.
+    pub fn clear(&mut self, clear_color: Color) {
+        self.canvas.set_draw_color(clear_color);
+        self.canvas.clear();
+    }
+
+    /// Updates the screen,
+    pub fn present(&mut self) {
+        self.canvas.present();
+    }
+
     /// Checks whether the given key is pressed.
     pub fn is_key_pressed(&self, key_code: &Keycode) -> bool {
         self.pressed_keys.contains(key_code)
@@ -110,6 +121,11 @@ impl GameWindow {
     /// Returns true when a quit event has been received.
     pub fn should_close(&self) -> bool {
         self.should_close
+    }
+
+    /// Hints that this window should close.
+    pub fn close(&mut self) {
+        self.should_close = true;
     }
 
     /// Returns a mutable reference to [`EventPump`] of the current `SDL2`

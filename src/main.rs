@@ -10,7 +10,6 @@ const GRAVITY: f32 = 800.0;
 struct Context<'a> {
     game_window: &'a mut GameWindow,
     text_renderer: &'a TextRenderer<'a>,
-    floor: &'a Floor,
     delta_time: f32,
 }
 
@@ -49,8 +48,9 @@ impl Player {
         Ok(())
     }
 
-    fn update(&mut self, ctx: &Context) {
-        if !self.alive {
+    fn update(&mut self, ctx: &Context, environment: &Environment) {
+        if self.aabbf().intersects(&environment.obstacle.aabbf()) {
+            self.alive = false;
             return;
         }
 
@@ -72,10 +72,12 @@ impl Player {
                     max: future_pos + self.size,
                 };
 
+                let floor_bb = &environment.floor.bounding_box;
+
                 // Player intersects with floor.
-                if bb.intersects(&ctx.floor.bounding_box) {
+                if bb.intersects(floor_bb) {
                     self.velocity.y = 0.0;
-                    self.pos.y = ctx.floor.bounding_box.min.y - self.size.y;
+                    self.pos.y = floor_bb.min.y - self.size.y;
                     self.state = MovementState::Running;
                 }
             }
@@ -162,6 +164,85 @@ impl Obstacle {
     }
 }
 
+trait Game {
+    fn draw(&mut self, ctx: &mut Context) -> Result<(), String>;
+    fn update(&mut self, ctx: &mut Context) -> Result<(), String>;
+}
+
+struct Environment {
+    floor: Floor,
+    obstacle: Obstacle,
+}
+
+struct DinaiGame {
+    player: Player,
+    environment: Environment,
+}
+
+impl DinaiGame {
+    fn new(ctx: &mut Context) -> Self {
+        let win_width = ctx.game_window.config().width;
+
+        let floor = Floor {
+            bounding_box: AABBf {
+                min: Vector2f::from_coords(0.0, 600.0),
+                max: Vector2f::from_coords(win_width as f32, 620.0),
+            },
+        };
+        let floor_bot_y = floor.bounding_box.min.y;
+
+        let player = Player {
+            pos: Vector2f::from_coords(100.0, floor_bot_y - 25.0),
+            size: Vector2f::from_coords(25.0, 25.0),
+            state: MovementState::Running,
+            alive: true,
+            score: 0.0,
+            velocity: Vector2f::new(),
+        };
+
+        let obstacle = Obstacle {
+            pos: Vector2f::from_coords(win_width as f32, floor_bot_y - 35.0),
+            size: Vector2f::from_coords(25.0, 35.0),
+            velocity_x: -400.0,
+        };
+
+        Self {
+            player,
+            environment: Environment { floor, obstacle },
+        }
+    }
+}
+
+impl Game for DinaiGame {
+    fn draw(&mut self, ctx: &mut Context) -> Result<(), String> {
+        ctx.game_window.clear(Color::RGB(240, 240, 240));
+
+        self.environment.obstacle.draw(ctx)?;
+        self.player.draw(ctx)?;
+        self.environment.floor.draw(ctx)?;
+
+        ctx.game_window.present();
+
+        Ok(())
+    }
+
+    fn update(&mut self, ctx: &mut Context) -> Result<(), String> {
+        let player = &mut self.player;
+        let env = &mut self.environment;
+
+        if ctx.game_window.is_key_pressed(&Keycode::Q) {
+            ctx.game_window.close();
+        }
+
+        if player.alive {
+            player.update(ctx, env);
+            env.obstacle.update(ctx);
+        }
+
+        Ok(())
+    }
+}
+
 fn main() -> Result<(), String> {
     let win_conf = WindowConfig {
         title: "dinai",
@@ -169,73 +250,29 @@ fn main() -> Result<(), String> {
         height: 720,
     };
 
-    let floor = Floor {
-        bounding_box: AABBf {
-            min: Vector2f::from_coords(0.0, 600.0),
-            max: Vector2f::from_coords(win_conf.width as f32, 620.0),
-        },
-    };
-
-    let floor_top_y = floor.bounding_box.min.y;
-    let mut player = Player {
-        pos: Vector2f::from_coords(100.0, floor_top_y - 25.0),
-        size: Vector2f::from_coords(25.0, 25.0),
-        state: MovementState::Running,
-        alive: true,
-        score: 0.0,
-        velocity: Vector2f::new(),
-    };
-
-    let mut obstacle = Obstacle {
-        pos: Vector2f::from_coords(win_conf.width as f32, floor_top_y - 35.0),
-        size: Vector2f::from_coords(25.0, 35.0),
-        velocity_x: -400.0,
-    };
-
     let mut game_window = GameWindow::new(win_conf)?;
 
     let ttf_context = sdl2::ttf::init().map_err(|e| e.to_string())?;
     let text_renderer = TextRenderer::new(&ttf_context, game_window.canvas())?;
 
+    let mut ctx = Context {
+        game_window: &mut game_window,
+        text_renderer: &text_renderer,
+        delta_time: 0.0,
+    };
+
+    let mut the_game = DinaiGame::new(&mut ctx);
+
     let mut start_time = Instant::now();
 
-    while !game_window.should_close() {
-        let delta_time = start_time.elapsed().as_secs_f32();
+    while !ctx.game_window.should_close() {
+        ctx.delta_time = start_time.elapsed().as_secs_f32();
         start_time = Instant::now();
 
-        game_window.poll();
+        ctx.game_window.poll();
 
-        if game_window.is_key_pressed(&Keycode::Q) {
-            break;
-        }
-
-        let mut ctx = Context {
-            game_window: &mut game_window,
-            text_renderer: &text_renderer,
-            floor: &floor,
-            delta_time,
-        };
-
-        if player.alive {
-            player.update(&ctx);
-            obstacle.update(&ctx);
-
-            if player.aabbf().intersects(&obstacle.aabbf()) {
-                player.alive = false;
-            }
-        }
-
-        let canvas = ctx.game_window.canvas_mut();
-
-        // Set clear color.
-        canvas.set_draw_color(Color::RGB(240, 240, 240));
-        canvas.clear();
-
-        obstacle.draw(&mut ctx)?;
-        player.draw(&mut ctx)?;
-        floor.draw(&mut ctx)?;
-
-        ctx.game_window.canvas_mut().present();
+        the_game.update(&mut ctx)?;
+        the_game.draw(&mut ctx)?;
     }
 
     Ok(())
