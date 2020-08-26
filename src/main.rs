@@ -1,4 +1,5 @@
-use dinai::math::{AABBf, Vector2f};
+use dinai::math::{AABBf, Matrixf, Vector2f};
+use dinai::neuralnet::NeuralNetwork;
 use dinai::window::{GameWindow, TextRenderer, WindowConfig};
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -27,15 +28,13 @@ struct Player {
 
     // Defined as pixels per second.
     velocity: Vector2f,
+
+    nnet: NeuralNetwork,
 }
 
 impl Player {
     fn draw(&self, ctx: &mut Context) -> Result<(), String> {
         let canvas = ctx.game_window.canvas_mut();
-        let score_text = format!("Score: {:.2}", self.score);
-
-        ctx.text_renderer
-            .draw_text(&score_text, 0, 0, 0.2, canvas)?;
 
         canvas.set_draw_color(Color::RGB(0, 0, 0));
         canvas.fill_rect(Rect::new(
@@ -48,38 +47,44 @@ impl Player {
         Ok(())
     }
 
+    fn think(&mut self, environment: &Environment) {
+        let pos_y = self.pos.y;
+        let obstacle_dx = environment.obstacle.pos.x - self.pos.x;
+
+        let input = Matrixf::from(vec![vec![pos_y, obstacle_dx]]);
+        let output = self.nnet.feed(&input);
+        if output[0][0] > 0.75 {
+            self.jump();
+        }
+    }
+
     fn update(&mut self, ctx: &Context, environment: &Environment) {
         if self.aabbf().intersects(&environment.obstacle.aabbf()) {
             self.alive = false;
             return;
         }
 
-        match self.state {
-            MovementState::Running => {
-                if ctx.game_window.is_key_pressed(&Keycode::W) {
-                    self.jump();
-                }
-            }
-            MovementState::Jumping => {
-                self.velocity.y += GRAVITY * ctx.delta_time;
+        self.think(environment);
 
-                // Predict collision one frame in advance. This way the player
-                // does not flicker after landing on the floor.
-                let future_pos = self.pos + self.velocity * ctx.delta_time;
+        if let MovementState::Jumping = self.state {
+            self.velocity.y += GRAVITY * ctx.delta_time;
 
-                let bb = AABBf {
-                    min: future_pos,
-                    max: future_pos + self.size,
-                };
+            // Predict collision one frame in advance. This way the player
+            // does not flicker after landing on the floor.
+            let future_pos = self.pos + self.velocity * ctx.delta_time;
 
-                let floor_bb = &environment.floor.bounding_box;
+            let bb = AABBf {
+                min: future_pos,
+                max: future_pos + self.size,
+            };
 
-                // Player intersects with floor.
-                if bb.intersects(floor_bb) {
-                    self.velocity.y = 0.0;
-                    self.pos.y = floor_bb.min.y - self.size.y;
-                    self.state = MovementState::Running;
-                }
+            let floor_bb = &environment.floor.bounding_box;
+
+            // Player intersects with floor.
+            if bb.intersects(floor_bb) {
+                self.velocity.y = 0.0;
+                self.pos.y = floor_bb.min.y - self.size.y;
+                self.state = MovementState::Running;
             }
         }
 
@@ -97,8 +102,10 @@ impl Player {
     }
 
     fn jump(&mut self) {
-        self.velocity.y = -350.0;
-        self.state = MovementState::Jumping;
+        if let MovementState::Running = self.state {
+            self.velocity.y = -350.0;
+            self.state = MovementState::Jumping;
+        }
     }
 }
 
@@ -175,7 +182,8 @@ struct Environment {
 }
 
 struct DinaiGame {
-    player: Player,
+    players: Vec<Player>,
+    generation: u32,
     environment: Environment,
 }
 
@@ -191,14 +199,18 @@ impl DinaiGame {
         };
         let floor_bot_y = floor.bounding_box.min.y;
 
-        let player = Player {
-            pos: Vector2f::from_coords(100.0, floor_bot_y - 25.0),
-            size: Vector2f::from_coords(25.0, 25.0),
-            state: MovementState::Running,
-            alive: true,
-            score: 0.0,
-            velocity: Vector2f::new(),
-        };
+        let mut players = Vec::new();
+        for _ in 0..10 {
+            players.push(Player {
+                pos: Vector2f::from_coords(100.0, floor_bot_y - 25.0),
+                size: Vector2f::from_coords(25.0, 25.0),
+                state: MovementState::Running,
+                alive: true,
+                score: 0.0,
+                velocity: Vector2f::new(),
+                nnet: NeuralNetwork::new(2, 1),
+            });
+        }
 
         let obstacle = Obstacle {
             pos: Vector2f::from_coords(win_width as f32, floor_bot_y - 35.0),
@@ -207,9 +219,45 @@ impl DinaiGame {
         };
 
         Self {
-            player,
+            players,
             environment: Environment { floor, obstacle },
+            generation: 0,
         }
+    }
+
+    fn restart_env(&mut self, ctx: &Context) {
+        let win_width = ctx.game_window.config().width;
+        self.environment.obstacle.pos.x = win_width as f32;
+    }
+
+    fn next_generation(&mut self) {
+        self.players
+            .sort_unstable_by(|a, b| a.score.partial_cmp(&b.score).unwrap());
+
+        let parent1_net = &self.players[0].nnet;
+        let parent2_net = &self.players[1].nnet;
+        let child_net = parent1_net.crossover(&parent2_net);
+
+        let parent_y = self.players[0].pos.y;
+
+        let mut children = Vec::with_capacity(self.players.len());
+        for _ in 0..self.players.len() {
+            let mut nnet = child_net.clone();
+            nnet.mutate();
+
+            children.push(Player {
+                pos: Vector2f::from_coords(100.0, parent_y),
+                size: Vector2f::from_coords(25.0, 25.0),
+                state: MovementState::Running,
+                alive: true,
+                score: 0.0,
+                velocity: Vector2f::new(),
+                nnet,
+            });
+        }
+
+        self.players = children;
+        self.generation += 1;
     }
 }
 
@@ -218,8 +266,22 @@ impl Game for DinaiGame {
         ctx.game_window.clear(Color::RGB(240, 240, 240));
 
         self.environment.obstacle.draw(ctx)?;
-        self.player.draw(ctx)?;
+        for player in self.players.iter() {
+            if player.alive {
+                player.draw(ctx)?;
+            }
+        }
         self.environment.floor.draw(ctx)?;
+
+        let canvas = ctx.game_window.canvas_mut();
+        let mut p_iter = self.players.iter().skip_while(|p| !p.alive);
+        if let Some(ref player) = p_iter.next() {
+            let score = format!("Score: {:.2}", player.score);
+            ctx.text_renderer.draw_text(&score, 10, 10, 0.2, canvas)?;
+        }
+
+        let gen = format!("Generation: {}", self.generation);
+        ctx.text_renderer.draw_text(&gen, 10, 35, 0.2, canvas)?;
 
         ctx.game_window.present();
 
@@ -227,16 +289,25 @@ impl Game for DinaiGame {
     }
 
     fn update(&mut self, ctx: &mut Context) -> Result<(), String> {
-        let player = &mut self.player;
         let env = &mut self.environment;
 
         if ctx.game_window.is_key_pressed(&Keycode::Q) {
             ctx.game_window.close();
         }
 
-        if player.alive {
-            player.update(ctx, env);
+        let mut any_alive = false;
+        for player in self.players.iter_mut() {
+            if player.alive {
+                player.update(ctx, env);
+                any_alive = true;
+            }
+        }
+
+        if any_alive {
             env.obstacle.update(ctx);
+        } else {
+            self.next_generation();
+            self.restart_env(ctx);
         }
 
         Ok(())

@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["Miloslav Smicik", "Peter Strycek"]
 edition = "2018"
 
+[dependencies]
+rand = "0.7.3"
+
 [dependencies.sdl2]
 version = "0.34"
 default-features = false

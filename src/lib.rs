@@ -4,4 +4,5 @@
 #![warn(missing_docs)]
 
 pub mod math;
+pub mod neuralnet;
 pub mod window;
