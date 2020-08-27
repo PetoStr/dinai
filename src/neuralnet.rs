@@ -34,8 +34,8 @@ impl NeuralNetwork {
 
     /// Crossovers two neural networks in order to produce a new child.
     pub fn crossover(&self, other: &Self) -> Self {
-        let hidden_layer_in = self.hidden_layer_in.clone();
-        let hidden_layer_out = other.hidden_layer_out.clone();
+        let hidden_layer_in = self.hidden_layer_in.crossover(&other.hidden_layer_in);
+        let hidden_layer_out = self.hidden_layer_out.crossover(&other.hidden_layer_out);
 
         Self {
             hidden_layer_in,
@@ -45,23 +45,9 @@ impl NeuralNetwork {
 
     /// Randomly mutates weights.
     pub fn mutate(&mut self) {
-        use rand::Rng;
-
         const PROBABILITY: f32 = 0.15;
-
-        let mutate_matrix = |m: &mut Matrixf| {
-            m.apply(|x| {
-                let mut rng = rand::thread_rng();
-                if rng.gen::<f32>() < PROBABILITY {
-                    x * rng.gen_range(-1.0, 1.0)
-                } else {
-                    x
-                }
-            });
-        };
-
-        mutate_matrix(&mut self.hidden_layer_in);
-        mutate_matrix(&mut self.hidden_layer_out);
+        self.hidden_layer_in.mutate(PROBABILITY);
+        self.hidden_layer_out.mutate(PROBABILITY);
     }
 
     fn add_bias(layer: &mut Matrixf) {

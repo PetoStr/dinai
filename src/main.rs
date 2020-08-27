@@ -50,8 +50,9 @@ impl Player {
     fn think(&mut self, environment: &Environment) {
         let pos_y = self.pos.y;
         let obstacle_dx = environment.obstacle.pos.x - self.pos.x;
+        let score = self.score;
 
-        let input = Matrixf::from(vec![vec![pos_y, obstacle_dx]]);
+        let input = Matrixf::from(vec![vec![pos_y, obstacle_dx, score]]);
         let output = self.nnet.feed(&input);
         if output[0][0] > 0.75 {
             self.jump();
@@ -161,6 +162,10 @@ impl Obstacle {
         if self.pos.x + self.size.x < 0.0 {
             self.pos.x = ctx.game_window.config().width as f32;
         }
+
+        if self.velocity_x < 500.0 {
+            self.velocity_x -= 30.0 * ctx.delta_time;
+        }
     }
 
     fn aabbf(&self) -> AABBf {
@@ -200,7 +205,7 @@ impl DinaiGame {
         let floor_bot_y = floor.bounding_box.min.y;
 
         let mut players = Vec::new();
-        for _ in 0..10 {
+        for _ in 0..1000 {
             players.push(Player {
                 pos: Vector2f::from_coords(100.0, floor_bot_y - 25.0),
                 size: Vector2f::from_coords(25.0, 25.0),
@@ -208,7 +213,7 @@ impl DinaiGame {
                 alive: true,
                 score: 0.0,
                 velocity: Vector2f::new(),
-                nnet: NeuralNetwork::new(2, 1),
+                nnet: NeuralNetwork::new(3, 1),
             });
         }
 
@@ -228,6 +233,7 @@ impl DinaiGame {
     fn restart_env(&mut self, ctx: &Context) {
         let win_width = ctx.game_window.config().width;
         self.environment.obstacle.pos.x = win_width as f32;
+        self.environment.obstacle.velocity_x = -400.0;
     }
 
     fn next_generation(&mut self) {
@@ -238,7 +244,7 @@ impl DinaiGame {
         let parent2_net = &self.players[1].nnet;
         let child_net = parent1_net.crossover(&parent2_net);
 
-        let parent_y = self.players[0].pos.y;
+        let floor_bot_y = self.environment.floor.bounding_box.min.y;
 
         let mut children = Vec::with_capacity(self.players.len());
         for _ in 0..self.players.len() {
@@ -246,7 +252,7 @@ impl DinaiGame {
             nnet.mutate();
 
             children.push(Player {
-                pos: Vector2f::from_coords(100.0, parent_y),
+                pos: Vector2f::from_coords(100.0, floor_bot_y - 25.0),
                 size: Vector2f::from_coords(25.0, 25.0),
                 state: MovementState::Running,
                 alive: true,
@@ -282,6 +288,13 @@ impl Game for DinaiGame {
 
         let gen = format!("Generation: {}", self.generation);
         ctx.text_renderer.draw_text(&gen, 10, 35, 0.2, canvas)?;
+
+        let alive_cn = self
+            .players
+            .iter()
+            .fold(0, |acc, p| if p.alive { acc + 1 } else { acc });
+        let alive = format!("Alive: {}", alive_cn);
+        ctx.text_renderer.draw_text(&alive, 10, 60, 0.2, canvas)?;
 
         ctx.game_window.present();
 

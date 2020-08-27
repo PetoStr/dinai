@@ -172,6 +172,54 @@ impl Matrixf {
             }
         }
     }
+
+    /// Randomly adds Gaussian random value to every cell.
+    pub fn mutate(&mut self, probability: f32) {
+        use rand::Rng;
+        use rand_distr::StandardNormal;
+
+        let mut rng = rand::thread_rng();
+        for row in self.data.iter_mut() {
+            for cell in row.iter_mut() {
+                if rng.gen::<f32>() < probability {
+                    let val: f32 = rng.sample(StandardNormal);
+                    *cell += val / 5.0;
+
+                    if *cell > 1.0 {
+                        *cell = 1.0;
+                    } else if *cell < -1.0 {
+                        *cell = -1.0;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Crossovers two matrices at one random position producing a new matrix.
+    ///
+    /// # Panics
+    ///
+    /// This crossover panics if these matrices do not have same dimensions.
+    pub fn crossover(&self, other: &Self) -> Self {
+        assert_eq!(self.rows, other.rows);
+        assert_eq!(self.columns, other.columns);
+
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+
+        let pr: usize = rng.gen_range(0, self.rows);
+        let pc: usize = rng.gen_range(0, self.columns);
+
+        let mut res = self.clone();
+
+        for y in pr..self.rows {
+            for x in pc..self.columns {
+                res.data[y][x] = other.data[y][x];
+            }
+        }
+
+        res
+    }
 }
 
 impl From<Vec<Vec<f32>>> for Matrixf {
@@ -201,12 +249,12 @@ impl AsRef<Vec<Vec<f32>>> for Matrixf {
     }
 }
 
-impl ops::Index<usize> for Matrixf {
-    type Output = Vec<f32>;
+impl ops::Deref for Matrixf {
+    type Target = Vec<Vec<f32>>;
 
     #[inline]
-    fn index(&self, key: usize) -> &Self::Output {
-        &self.data[key]
+    fn deref(&self) -> &Self::Target {
+        &self.data
     }
 }
 
