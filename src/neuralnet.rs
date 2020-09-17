@@ -45,7 +45,7 @@ impl NeuralNetwork {
 
     /// Randomly mutates weights.
     pub fn mutate(&mut self) {
-        const PROBABILITY: f32 = 0.15;
+        const PROBABILITY: f32 = 0.05;
         self.hidden_layer_in.mutate(PROBABILITY);
         self.hidden_layer_out.mutate(PROBABILITY);
     }

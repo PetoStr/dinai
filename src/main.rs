@@ -238,7 +238,7 @@ impl DinaiGame {
 
     fn next_generation(&mut self) {
         self.players
-            .sort_unstable_by(|a, b| a.score.partial_cmp(&b.score).unwrap());
+            .sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
 
         let parent1_net = &self.players[0].nnet;
         let parent2_net = &self.players[1].nnet;
