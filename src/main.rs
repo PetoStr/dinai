@@ -163,7 +163,7 @@ impl Obstacle {
             self.pos.x = ctx.game_window.config().width as f32;
         }
 
-        if self.velocity_x < 500.0 {
+        if self.velocity_x > -2000.0 {
             self.velocity_x -= 30.0 * ctx.delta_time;
         }
     }
