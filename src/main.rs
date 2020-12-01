@@ -12,7 +12,7 @@ const GRAVITY: f32 = 800.0;
 struct Context<'a> {
     game_window: &'a mut GameWindow,
     text_renderer: &'a TextRenderer<'a>,
-    delta_time: f32,
+    step_s: f32,
 }
 
 enum MovementState {
@@ -34,13 +34,15 @@ struct Player {
 }
 
 impl Player {
-    fn draw(&self, ctx: &mut Context) -> Result<(), String> {
+    fn draw(&self, ctx: &mut Context, interpolation: f32) -> Result<(), String> {
         let canvas = ctx.game_window.canvas_mut();
+
+        let pos = self.pos + self.velocity * interpolation;
 
         canvas.set_draw_color(Color::RGB(0, 0, 0));
         canvas.fill_rect(Rect::new(
-            self.pos.x as i32,
-            self.pos.y as i32,
+            pos.x as i32,
+            pos.y as i32,
             self.size.x as u32,
             self.size.y as u32,
         ))?;
@@ -60,7 +62,7 @@ impl Player {
         }
     }
 
-    fn update(&mut self, delta_time: f32, environment: &Environment) {
+    fn update(&mut self, step_s: f32, environment: &Environment) {
         if self.aabbf().intersects(&environment.obstacle.aabbf()) {
             self.alive = false;
             return;
@@ -69,11 +71,11 @@ impl Player {
         self.think(environment);
 
         if let MovementState::Jumping = self.state {
-            self.velocity.y += GRAVITY * delta_time;
+            self.velocity.y += GRAVITY * step_s;
 
             // Predict collision one frame in advance. This way the player
             // does not flicker after landing on the floor.
-            let future_pos = self.pos + self.velocity * delta_time;
+            let future_pos = self.pos + self.velocity * step_s;
 
             let bb = AABBf {
                 min: future_pos,
@@ -90,10 +92,10 @@ impl Player {
             }
         }
 
-        self.score += delta_time;
+        self.score += step_s;
 
         self.velocity.x = 0.0;
-        self.pos += self.velocity * delta_time;
+        self.pos += self.velocity * step_s;
     }
 
     fn aabbf(&self) -> AABBf {
@@ -143,12 +145,14 @@ struct Obstacle {
 }
 
 impl Obstacle {
-    fn draw(&self, ctx: &mut Context) -> Result<(), String> {
+    fn draw(&self, ctx: &mut Context, interpolation: f32) -> Result<(), String> {
         let canvas = ctx.game_window.canvas_mut();
+
+        let x_pos = self.pos.x + self.velocity_x * interpolation;
 
         canvas.set_draw_color(Color::RGB(0, 127, 0));
         canvas.fill_rect(Rect::new(
-            self.pos.x as i32,
+            x_pos as i32,
             self.pos.y as i32,
             self.size.x as u32,
             self.size.y as u32,
@@ -158,14 +162,14 @@ impl Obstacle {
     }
 
     fn update(&mut self, ctx: &Context) {
-        self.pos.x += self.velocity_x * ctx.delta_time;
+        self.pos.x += self.velocity_x * ctx.step_s;
 
         if self.pos.x + self.size.x < 0.0 {
             self.pos.x = ctx.game_window.config().width as f32;
         }
 
         if self.velocity_x > -2000.0 {
-            self.velocity_x -= 30.0 * ctx.delta_time;
+            self.velocity_x -= 30.0 * ctx.step_s;
         }
     }
 
@@ -178,7 +182,7 @@ impl Obstacle {
 }
 
 trait Game {
-    fn draw(&mut self, ctx: &mut Context) -> Result<(), String>;
+    fn draw(&mut self, ctx: &mut Context, interpolation: f32) -> Result<(), String>;
     fn update(&mut self, ctx: &mut Context) -> Result<(), String>;
 }
 
@@ -206,7 +210,7 @@ impl DinaiGame {
         let floor_bot_y = floor.bounding_box.min.y;
 
         let mut players = Vec::new();
-        for _ in 0..10000 {
+        for _ in 0..1000 {
             players.push(Player {
                 pos: Vector2f::from_coords(100.0, floor_bot_y - 25.0),
                 size: Vector2f::from_coords(25.0, 25.0),
@@ -269,13 +273,13 @@ impl DinaiGame {
 }
 
 impl Game for DinaiGame {
-    fn draw(&mut self, ctx: &mut Context) -> Result<(), String> {
+    fn draw(&mut self, ctx: &mut Context, interpolation: f32) -> Result<(), String> {
         ctx.game_window.clear(Color::RGB(240, 240, 240));
 
-        self.environment.obstacle.draw(ctx)?;
+        self.environment.obstacle.draw(ctx, interpolation)?;
         for player in self.players.iter() {
             if player.alive {
-                player.draw(ctx)?;
+                player.draw(ctx, interpolation)?;
             }
         }
         self.environment.floor.draw(ctx)?;
@@ -304,7 +308,7 @@ impl Game for DinaiGame {
 
     fn update(&mut self, ctx: &mut Context) -> Result<(), String> {
         let env = &mut self.environment;
-        let delta_time = ctx.delta_time;
+        let step_s = ctx.step_s;
 
         if ctx.game_window.is_key_pressed(&Keycode::Q) {
             ctx.game_window.close();
@@ -314,7 +318,7 @@ impl Game for DinaiGame {
             .par_iter_mut()
             .filter(|player| player.alive)
             .for_each(|player| {
-                player.update(delta_time, env);
+                player.update(step_s, env);
             });
 
         let any_alive = self.players.par_iter().any(|player| player.alive);
@@ -345,21 +349,27 @@ fn main() -> Result<(), String> {
     let mut ctx = Context {
         game_window: &mut game_window,
         text_renderer: &text_renderer,
-        delta_time: 0.0,
+        step_s: 1.0 / 30.0,
     };
 
     let mut the_game = DinaiGame::new(&mut ctx);
 
     let mut start_time = Instant::now();
+    let mut lag = 0.0;
 
     while !ctx.game_window.should_close() {
-        ctx.delta_time = start_time.elapsed().as_secs_f32();
+        let delta_time = start_time.elapsed().as_secs_f32();
         start_time = Instant::now();
+        lag += delta_time.min(0.3);
 
         ctx.game_window.poll();
 
-        the_game.update(&mut ctx)?;
-        the_game.draw(&mut ctx)?;
+        while lag > ctx.step_s {
+            the_game.update(&mut ctx)?;
+            lag -= ctx.step_s;
+        }
+
+        the_game.draw(&mut ctx, lag)?;
     }
 
     Ok(())
