@@ -13,6 +13,7 @@ struct Context<'a> {
     game_window: &'a mut GameWindow,
     text_renderer: &'a TextRenderer<'a>,
     step_s: f32,
+    speed: f32,
 }
 
 enum MovementState {
@@ -183,6 +184,7 @@ impl Obstacle {
 
 trait Game {
     fn draw(&mut self, ctx: &mut Context, interpolation: f32) -> Result<(), String>;
+    fn handle_input(&mut self, ctx: &mut Context) -> Result<(), String>;
     fn update(&mut self, ctx: &mut Context) -> Result<(), String>;
 }
 
@@ -301,7 +303,26 @@ impl Game for DinaiGame {
         let alive = format!("Alive: {}", alive_cn);
         ctx.text_renderer.draw_text(&alive, 10, 60, 0.2, canvas)?;
 
+        let speed = format!("Speed: {:.1}", ctx.speed);
+        ctx.text_renderer.draw_text(&speed, 10, 110, 0.2, canvas)?;
+
         ctx.game_window.present();
+
+        Ok(())
+    }
+
+    fn handle_input(&mut self, ctx: &mut Context) -> Result<(), String> {
+        if ctx.game_window.is_key_pressed(&Keycode::Q) {
+            ctx.game_window.close();
+        }
+
+        if ctx.game_window.is_key_pressed(&Keycode::K) {
+            ctx.speed += 0.3 * ctx.step_s;
+        }
+        if ctx.game_window.is_key_pressed(&Keycode::J) {
+            ctx.speed -= 0.3 * ctx.step_s;
+            ctx.speed = ctx.speed.max(0.1);
+        }
 
         Ok(())
     }
@@ -309,10 +330,6 @@ impl Game for DinaiGame {
     fn update(&mut self, ctx: &mut Context) -> Result<(), String> {
         let env = &mut self.environment;
         let step_s = ctx.step_s;
-
-        if ctx.game_window.is_key_pressed(&Keycode::Q) {
-            ctx.game_window.close();
-        }
 
         self.players
             .par_iter_mut()
@@ -350,6 +367,7 @@ fn main() -> Result<(), String> {
         game_window: &mut game_window,
         text_renderer: &text_renderer,
         step_s: 1.0 / 30.0,
+        speed: 1.0,
     };
 
     let mut the_game = DinaiGame::new(&mut ctx);
@@ -358,11 +376,12 @@ fn main() -> Result<(), String> {
     let mut lag = 0.0;
 
     while !ctx.game_window.should_close() {
-        let delta_time = start_time.elapsed().as_secs_f32();
+        let delta_time = start_time.elapsed().as_secs_f32() * ctx.speed;
         start_time = Instant::now();
         lag += delta_time.min(0.3);
 
         ctx.game_window.poll();
+        the_game.handle_input(&mut ctx)?;
 
         while lag > ctx.step_s {
             the_game.update(&mut ctx)?;
