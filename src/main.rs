@@ -1,4 +1,4 @@
-use dinai::math::{AABBf, Matrixf, Vector2f};
+use dinai::math::{AABBf, Matrix, Vector2f};
 use dinai::neuralnet::NeuralNetwork;
 use dinai::window::{GameWindow, TextRenderer, WindowConfig};
 use rayon::prelude::*;
@@ -31,7 +31,7 @@ struct Player {
     // Defined as pixels per second.
     velocity: Vector2f,
 
-    nnet: NeuralNetwork,
+    nnet: NeuralNetwork<3, 4, 1>,
 }
 
 impl Player {
@@ -56,9 +56,9 @@ impl Player {
         let obstacle_dx = environment.obstacle.pos.x - self.pos.x;
         let score = self.score;
 
-        let input = Matrixf::from(vec![vec![pos_y, obstacle_dx, score]]);
+        let input = Matrix::from([[pos_y, obstacle_dx, score]]);
         let output = self.nnet.feed(&input);
-        if output[0][0] > 0.75 {
+        if output.as_ref()[0][0] > 0.75 {
             self.jump();
         }
     }
@@ -220,7 +220,7 @@ impl DinaiGame {
                 alive: true,
                 score: 0.0,
                 velocity: Vector2f::new(),
-                nnet: NeuralNetwork::new(3, 1),
+                nnet: NeuralNetwork::new(),
             });
         }
 
